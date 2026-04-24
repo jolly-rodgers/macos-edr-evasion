@@ -16,6 +16,7 @@ import (
 // SecureBuffer holds sensitive data in an anonymous mmap region.
 type SecureBuffer struct {
 	data []byte
+	plen int // actual plaintext length written
 }
 
 // NewSecureBuffer allocates a page-aligned anonymous mmap.
@@ -35,19 +36,27 @@ func NewSecureBuffer(size int) (*SecureBuffer, error) {
 
 // Write copies data into the buffer and zeroes the remainder.
 func (s *SecureBuffer) Write(p []byte) {
-	n := copy(s.data, p)
-	for i := n; i < len(s.data); i++ {
+	s.plen = copy(s.data, p)
+	for i := s.plen; i < len(s.data); i++ {
 		s.data[i] = 0
 	}
 }
 
 // String returns the buffer contents as a trimmed string.
 func (s *SecureBuffer) String() string {
-	return strings.TrimRight(string(s.data), "\x00")
+	end := s.plen
+	if end > len(s.data) {
+		end = len(s.data)
+	}
+	return strings.TrimRight(string(s.data[:end]), "\x00")
 }
 
 // Lock encrypts the buffer with AES-256-GCM and marks memory PROT_NONE.
 func (s *SecureBuffer) Lock(key []byte) error {
+	if s.plen == 0 {
+		return unix.Mprotect(s.data, unix.PROT_NONE)
+	}
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return err
@@ -61,7 +70,8 @@ func (s *SecureBuffer) Lock(key []byte) error {
 		return err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, s.data, nil)
+	// Only encrypt the actual data, not the entire buffer
+	ciphertext := gcm.Seal(nonce, nonce, s.data[:s.plen], nil)
 	if len(ciphertext) > len(s.data) {
 		return fmt.Errorf("encrypted data exceeds buffer")
 	}
@@ -74,6 +84,10 @@ func (s *SecureBuffer) Lock(key []byte) error {
 func (s *SecureBuffer) Unlock(key []byte) error {
 	if err := unix.Mprotect(s.data, unix.PROT_READ|unix.PROT_WRITE); err != nil {
 		return err
+	}
+
+	if s.plen == 0 {
+		return nil
 	}
 
 	block, err := aes.NewCipher(key)
@@ -89,7 +103,9 @@ func (s *SecureBuffer) Unlock(key []byte) error {
 		return fmt.Errorf("buffer too small")
 	}
 
-	nonce, ciphertext := s.data[:nonceSize], s.data[nonceSize:]
+	nonce := s.data[:nonceSize]
+	// ciphertext includes tag; length = s.plen + gcm.Overhead()
+	ciphertext := s.data[nonceSize : nonceSize+s.plen+gcm.Overhead()]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return err
