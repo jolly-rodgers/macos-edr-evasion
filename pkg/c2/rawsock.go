@@ -48,8 +48,30 @@ func DialRaw(address string) (*RawConn, error) {
 	return &RawConn{fd: fd}, nil
 }
 
+// Read waits up to 30 seconds for data, then reads from the socket.
+// Detects disconnects via POLLHUP / POLLERR / zero-byte reads.
 func (c *RawConn) Read(b []byte) (int, error) {
-	return unix.Read(c.fd, b)
+	fds := []unix.PollFd{{Fd: int32(c.fd), Events: unix.POLLIN}}
+	_, err := unix.Poll(fds, 30000) // 30 second timeout
+	if err != nil {
+		return 0, err
+	}
+
+	// Connection closed or error
+	if fds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
+		return 0, fmt.Errorf("connection closed")
+	}
+
+	// Timeout
+	if fds[0].Revents&unix.POLLIN == 0 {
+		return 0, fmt.Errorf("read timeout")
+	}
+
+	n, err := unix.Read(c.fd, b)
+	if n == 0 && err == nil {
+		return 0, fmt.Errorf("connection closed")
+	}
+	return n, err
 }
 
 func (c *RawConn) Write(b []byte) (int, error) {
