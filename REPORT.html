@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Team Assessment Report — macOS EDR Evasion</title>
+<style>
+:root { --primary:#1a237e; --accent:#c62828; --bg:#f5f5f5; --card:#fff; --text:#333; }
+* { box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--text); line-height:1.6; margin:0; padding:0; }
+.container { max-width:960px; margin:0 auto; padding:24px; }
+header { background:var(--primary); color:#fff; padding:40px 24px; text-align:center; border-radius:0 0 12px 12px; }
+header h1 { margin:0 0 8px; font-size:1.8rem; }
+header p { margin:4px 0; opacity:.9; }
+.meta { display:flex; flex-wrap:wrap; gap:16px; justify-content:center; margin-top:12px; font-size:.9rem; }
+.badge { background:rgba(255,255,255,.2); padding:4px 12px; border-radius:20px; }
+section { background:var(--card); margin:24px 0; padding:28px; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+h2 { color:var(--primary); border-bottom:3px solid var(--primary); padding-bottom:8px; margin-top:0; }
+h3 { color:var(--primary); margin-top:24px; }
+h4 { color:#444; margin-top:18px; }
+.risk-critical { color:var(--accent); font-weight:700; }
+.risk-high { color:#e65100; font-weight:700; }
+table { width:100%; border-collapse:collapse; margin:16px 0; font-size:.95rem; }
+th, td { border:1px solid #ddd; padding:10px; text-align:left; }
+th { background:#f0f0f0; font-weight:600; }
+tr:nth-child(even) { background:#fafafa; }
+figure { margin:20px 0; text-align:center; }
+figure img { max-width:100%; border:1px solid #ddd; border-radius:8px; }
+figcaption { font-size:.85rem; color:#666; margin-top:6px; }
+.highlight { background:#fff3e0; border-left:4px solid #e65100; padding:12px 16px; margin:16px 0; }
+.footer { text-align:center; font-size:.85rem; color:#777; margin:40px 0 20px; }
+a { color:var(--primary); }
+ul { margin:8px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Red Team Assessment Report</h1>
+  <p style="font-size:1.1rem;">macOS Endpoint Detection &amp; Response (EDR) Bypass Evaluation</p>
+  <div class="meta">
+    <span class="badge">Date: April 24, 2026</span>
+    <span class="badge">Assessor: Senior Red Team Engineer</span>
+    <span class="badge">Target: macOS Sonoma + Elastic Defend</span>
+    <span class="badge">Frameworks: SOC 2 | NIST CSF 2.0</span>
+  </div>
+  <p style="margin-top:16px;"><a href="https://github.com/jolly-rodgers/macos-edr-evasion/blob/main/macos-edr-evasion-video-480p.mov" style="color:#fff; text-decoration:underline;">Video Evidence</a></p>
+</header>
+
+<div class="container">
+
+<section>
+  <h2>1. Executive Summary</h2>
+  <p>This engagement evaluated the effectiveness of a commercially deployed Endpoint Detection and Response (EDR) solution—<strong>Elastic Defend</strong>—against a custom-built macOS implant designed to simulate advanced persistent threat (APT) tradecraft. The objective was to identify detection gaps in the endpoint security control and map those deficiencies to SOC 2 and NIST CSF control requirements.</p>
+  <div class="highlight">
+    <strong>Key Finding:</strong> The implant achieved full operational capability—diskless execution, encrypted command-and-control (C2), memory-protected sleep, and sustained beaconing—while generating <strong class="risk-critical">zero behavioral alerts</strong> in the Elastic Defend console.
+  </div>
+  <p><strong>Risk Rating:</strong> <span class="risk-critical">CRITICAL</span> — The absence of alerts for multi-stage attacker behavior indicates a material weakness in the detective control layer.</p>
+</section>
+
+<section>
+  <h2>2. Scope and Objectives</h2>
+  <h4>In-Scope</h4>
+  <ul>
+    <li>macOS endpoint running Elastic Defend</li>
+    <li>Kali Linux C2 infrastructure</li>
+    <li>Local network segment (192.168.1.0/24)</li>
+  </ul>
+  <h4>Out-of-Scope</h4>
+  <ul>
+    <li>Cloud infrastructure, Active Directory, email gateway, physical security</li>
+  </ul>
+  <h4>Objectives</h4>
+  <ol>
+    <li>Execute a custom implant on a managed macOS endpoint and measure EDR response.</li>
+    <li>Evaluate disk-based, memory-based, and network-based evasion techniques.</li>
+    <li>Document detection gaps and map them to SOC 2 and NIST CSF control families.</li>
+    <li>Provide actionable remediation recommendations.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>3. Methodology</h2>
+  <table>
+    <tr><th>Phase</th><th>Activity</th><th>Tools / Techniques</th></tr>
+    <tr><td>1</td><td>Implant development</td><td>Go 1.22, CGO, golang.org/x/sys/unix</td></tr>
+    <tr><td>2</td><td>Initial execution</td><td>User-assisted execution, ad-hoc code signing</td></tr>
+    <tr><td>3</td><td>Defense evasion</td><td>Disk deletion, runtime decryption, raw BSD sockets</td></tr>
+    <tr><td>4</td><td>Persistence testing</td><td>LaunchAgent installation (launchctl)</td></tr>
+    <tr><td>5</td><td>C2 operations</td><td>AES-256-GCM encrypted channel, jittered beaconing</td></tr>
+    <tr><td>6</td><td>Memory protection</td><td>mmap + mprotect(PROT_NONE) + AES sleep locking</td></tr>
+    <tr><td>7</td><td>Telemetry review</td><td>Elastic Defend (Kibana Security app)</td></tr>
+    <tr><td>8</td><td>Network capture</td><td>tcpdump on Kali attacker host</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>4. Technical Findings</h2>
+
+  <h3>F-001: Implant Execution with No Initial Alert</h3>
+  <p>The implant (<code>implant_darwin</code>) was executed from a user-controlled directory. Elastic Defend logged the process creation event but did not generate a behavioral alert.</p>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/01-c2-connected.png" alt="C2 Connected">
+    <figcaption>Figure 1: macOS Terminal showing successful implant startup and encrypted C2 connection.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/02-edr-process-events.png" alt="EDR Process Events">
+    <figcaption>Figure 2: Kibana Security &gt; Hosts &gt; Events filtered for process.name:"implant_darwin". Four endpoint events logged, zero alerts generated.</figcaption>
+  </figure>
+  <p><strong>Root Cause:</strong> Default Elastic Defend behavioral rules on macOS did not flag an unsigned terminal-spawned binary making an outbound network connection.</p>
+  <p><strong>Impact:</strong> <span class="risk-high">HIGH</span> — Initial execution is the most critical detection opportunity.</p>
+
+  <h3>F-002: Diskless Execution Defeats File-Based Forensics</h3>
+  <p>Immediately after startup, the implant called <code>os.Remove(os.Args[0])</code>, deleting its own binary from disk while the process continued executing from memory.</p>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/05-disk-deletion.png" alt="Disk Deletion">
+    <figcaption>Figure 3: ls -la showing empty target directory (total 0) while ps aux confirms ./implant_darwin (PID 13107) is still running.</figcaption>
+  </figure>
+  <p><strong>Root Cause:</strong> Darwin kernel permits unlinking of running executable inodes. The EDR logged the file deletion event, but by the time an analyst investigates, the binary is no longer available for hash analysis or YARA scanning.</p>
+  <p><strong>Impact:</strong> <span class="risk-high">HIGH</span> — Eliminates post-incident artifact collection and hash-based IOC sweeping.</p>
+
+  <h3>F-003: macOS Persistence via LaunchAgent</h3>
+  <p>The implant installed a LaunchAgent plist (<code>com.apple.system.update.plist</code>) and copied itself to a hidden directory (<code>~/Library/Containers/.cache/systemupdate</code>) to survive reboots.</p>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/08-persistence-execution.png" alt="Persistence Execution">
+    <figcaption>Figure 4: Terminal output showing "Persistence installed" and successful encrypted C2 connection.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/03-persistence-artifacts.png" alt="Persistence Artifacts">
+    <figcaption>Figure 5: LaunchAgent plist content, hidden binary location, and active launchctl job listing (PID 13242).</figcaption>
+  </figure>
+  <p><strong>Root Cause:</strong> User-writable LaunchAgent directories are a known macOS persistence vector. Elastic Defend logged the file creation but did not alert on a new plist in ~/Library/LaunchAgents.</p>
+  <p><strong>Impact:</strong> <span class="risk-high">HIGH</span> — Persistence extends dwell time and requires manual hunting to discover.</p>
+
+  <h3>F-004: Encrypted C2 Channel Bypasses Network Inspection</h3>
+  <p>All C2 traffic was encrypted using AES-256-GCM with a custom message-framing protocol. Network inspection tools observing the traffic saw only high-entropy binary data.</p>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/06-encrypted-traffic.png" alt="Encrypted Traffic">
+    <figcaption>Figure 6: tcpdump -A capture showing unintelligible binary payloads. No plaintext commands visible.</figcaption>
+  </figure>
+  <p><strong>Root Cause:</strong> The implant uses raw BSD socket syscalls via golang.org/x/sys/unix instead of higher-level libraries, avoiding userland API hooks while delivering opaque payloads.</p>
+  <p><strong>Impact:</strong> <span class="risk-high">HIGH</span> — Network-based detection (IDS, NDR, proxy DLP) is rendered ineffective.</p>
+
+  <h3>F-005: Raw Socket Syscalls Bypass Userland API Hooks</h3>
+  <p>By circumventing Go's net package (which routes through libSystem), the implant avoided common EDR userland hooks placed on connect(), send(), and recv().</p>
+  <p><strong>Impact:</strong> <span class="risk-high">HIGH</span> — Kernel telemetry still records the connection, but enriched metadata from userland hooks is bypassed.</p>
+
+  <h3>F-006: Memory-Protected Sleep Defeats Memory Scanning</h3>
+  <p>During idle periods, the implant encrypts its C2 address buffer and marks the memory page PROT_NONE via mprotect. Any attempt to read the page results in a segmentation fault.</p>
+  <p><strong>Software Mechanism:</strong></p>
+  <ol>
+    <li>Allocate anonymous mmap region (MAP_ANON | MAP_PRIVATE)</li>
+    <li>Copy decrypted C2 address into buffer</li>
+    <li>Encrypt buffer with AES-256-GCM</li>
+    <li>mprotect(addr, len, PROT_NONE) — page becomes inaccessible</li>
+    <li>Sleep for jittered interval (8–15s)</li>
+    <li>Restore PROT_READ | PROT_WRITE</li>
+    <li>Decrypt buffer and reconnect</li>
+  </ol>
+  <p><strong>Impact:</strong> <span class="risk-high">HIGH</span> — Defeats string-based memory scans and live memory forensic tools.</p>
+
+  <h3>F-007: Zero Behavioral Alerts in EDR Console</h3>
+  <p>Despite multi-stage attacker behavior, Elastic Defend's Alerts page remained empty.</p>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/07-zero-alerts.png" alt="Zero Alerts">
+    <figcaption>Figure 7: Kibana Security &gt; Alerts showing "No items found" for the assessment period.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/09-process-executable.png" alt="Process Executable">
+    <figcaption>Figure 8: Kibana Discover view showing process.executable field containing the implant path, confirming telemetry ingestion without alert correlation.</figcaption>
+  </figure>
+  <p><strong>Root Cause:</strong> Detection rules were either not tuned for macOS-specific behaviors or relied on signature-based logic that the implant evaded through encryption and disk deletion.</p>
+  <p><strong>Impact:</strong> <span class="risk-critical">CRITICAL</span> — The EDR acted as a telemetry collection agent without effective automated response.</p>
+
+  <h3>F-008: Network Beaconing to Internal C2 Observed</h3>
+  <p>Elastic Defend logged a TCP connection from the macOS host to the Kali C2 server.</p>
+  <figure>
+    <img src="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/04-network-connection.png" alt="Network Connection">
+    <figcaption>Figure 9: Kibana Discover showing connection_attempted event to destination port 8443.</figcaption>
+  </figure>
+  <p><strong>Root Cause:</strong> Kernel-level network telemetry is difficult to bypass entirely. The connection was visible, but without an alerting rule correlating process + internal IP + non-standard port, it was silent.</p>
+  <p><strong>Impact:</strong> LOW-MEDIUM — Telemetry exists but requires proactive detection engineering to surface.</p>
+</section>
+
+<section>
+  <h2>5. Risk Assessment</h2>
+  <table>
+    <tr><th>Finding</th><th>Likelihood</th><th>Impact</th><th>Risk Score</th></tr>
+    <tr><td>F-001 No initial alert</td><td>High</td><td>High</td><td class="risk-critical">Critical</td></tr>
+    <tr><td>F-002 Diskless execution</td><td>High</td><td>High</td><td class="risk-critical">Critical</td></tr>
+    <tr><td>F-003 Persistence</td><td>Medium</td><td>High</td><td class="risk-high">High</td></tr>
+    <tr><td>F-004 Encrypted C2</td><td>High</td><td>High</td><td class="risk-critical">Critical</td></tr>
+    <tr><td>F-005 Raw socket hooks bypass</td><td>High</td><td>Medium</td><td class="risk-high">High</td></tr>
+    <tr><td>F-006 Memory-protected sleep</td><td>Medium</td><td>Medium</td><td class="risk-high">High</td></tr>
+    <tr><td>F-007 Zero alerts</td><td>High</td><td>Critical</td><td class="risk-critical">Critical</td></tr>
+    <tr><td>F-008 Network beacon visible</td><td>High</td><td>Low</td><td>Medium</td></tr>
+  </table>
+  <div class="highlight">
+    <strong>Overall Risk: CRITICAL</strong> — The EDR failed to detect or alert on any stage of a multi-step intrusion kill chain.
+  </div>
+</section>
+
+<section>
+  <h2>6. Compliance Mapping</h2>
+  <h3>SOC 2 Trust Service Criteria</h3>
+  <table>
+    <tr><th>Finding</th><th>TSC ID</th><th>Criteria</th><th>Gap</th></tr>
+    <tr><td>F-001, F-007</td><td>CC6.1</td><td>Logical access security controls</td><td>Unsigned terminal-spawned binaries were not blocked or alerted</td></tr>
+    <tr><td>F-004, F-005</td><td>CC6.6</td><td>Security infrastructure and software</td><td>Encrypted C2 and raw sockets bypassed inspection layers</td></tr>
+    <tr><td>F-007</td><td>CC7.1</td><td>Security operations center</td><td>No automated alert for multi-stage attacker behavior</td></tr>
+    <tr><td>F-007</td><td>CC7.2</td><td>System monitoring</td><td>Telemetry collected but monitoring logic failed to detect anomalies</td></tr>
+    <tr><td>F-003</td><td>CC7.3</td><td>System development</td><td>New persistence mechanisms were not baselined or alerted</td></tr>
+  </table>
+
+  <h3>NIST Cybersecurity Framework 2.0</h3>
+  <table>
+    <tr><th>Function</th><th>Category</th><th>Subcategory</th><th>Finding</th><th>Gap</th></tr>
+    <tr><td>Protect</td><td>PR.AC</td><td>PR.AC-1</td><td>F-001</td><td>Access control policy did not prevent execution of untrusted code</td></tr>
+    <tr><td>Protect</td><td>PR.IP</td><td>PR.IP-1</td><td>F-002, F-003</td><td>Baseline configurations did not include file integrity monitoring for hidden directories</td></tr>
+    <tr><td>Detect</td><td>DE.CM</td><td>DE.CM-1</td><td>F-004, F-007</td><td>Network monitoring did not detect or alert on encrypted C2 beaconing</td></tr>
+    <tr><td>Detect</td><td>DE.CM</td><td>DE.CM-4</td><td>F-007</td><td>Endpoint monitoring failed to correlate process + network + file events into alerts</td></tr>
+    <tr><td>Detect</td><td>DE.AE</td><td>DE.AE-1</td><td>F-007</td><td>Anomaly detection rules were insufficient for macOS threat vectors</td></tr>
+    <tr><td>Respond</td><td>RS.AN</td><td>RS.AN-1</td><td>F-007</td><td>Incident analysis capabilities were degraded due to lack of automated alerting</td></tr>
+    <tr><td>Respond</td><td>RS.MI</td><td>RS.MI-1</td><td>F-002</td><td>Containment was hindered by diskless execution removing the binary artifact</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>7. Remediation Recommendations</h2>
+  <h3>Immediate (0–30 Days)</h3>
+  <ul>
+    <li><strong>Enable Behavioral Rules for Unsigned Terminal Execution.</strong> Create an Elastic Defend custom rule: <code>process.parent.name: (Terminal OR zsh OR bash) AND process.code_signature.status : untrusted AND event.action : exec</code>. Severity: High.</li>
+    <li><strong>File Integrity Monitoring for Persistence Locations.</strong> Monitor <code>~/Library/LaunchAgents/</code> and <code>~/Library/Containers/</code> for new/modified plists and binaries.</li>
+    <li><strong>Network Beaconing Detection.</strong> Create a Kibana rule correlating repeated <code>destination.port: 8443</code> + <code>event.category: network</code> over a 5-minute window. Threshold: >=3 connection attempts.</li>
+  </ul>
+
+  <h3>Short-Term (30–90 Days)</h3>
+  <ul>
+    <li><strong>Memory Scanning Hardening.</strong> Evaluate EDR memory protection modules that can handle PROT_NONE pages by suspending the process and triggering an alert.</li>
+    <li><strong>Application Control / Gatekeeper Enforcement.</strong> Enforce strict Gatekeeper policies via MDM: only allow App Store and identified developer signatures.</li>
+    <li><strong>Purple Team Exercises.</strong> Schedule quarterly adversary simulation engagements specifically targeting macOS endpoints.</li>
+  </ul>
+
+  <h3>Long-Term (90+ Days)</h3>
+  <ul>
+    <li><strong>AI/ML Behavioral Baselines.</strong> Implement unsupervised learning models on process tree, network, and file event telemetry.</li>
+    <li><strong>Zero Trust Network Segmentation.</strong> Restrict intra-VLAN communication so endpoints cannot directly beacon to internal attacker VMs on non-standard ports.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>8. Conclusion</h2>
+  <p>This assessment demonstrated that a moderately sophisticated macOS implant—using only free, open-source tools and standard operating system APIs—can achieve full operational capability against Elastic Defend without triggering a single behavioral alert. The gaps identified are not in telemetry collection (data was abundant) but in <strong>detection engineering, correlation logic, and macOS-specific rule tuning</strong>.</p>
+  <p>For organizations pursuing SOC 2 Type II or aligning with NIST CSF, these findings represent control deficiencies in <strong>CC7.2</strong> and <strong>DE.CM</strong> that should be remediated before the next audit cycle. The purple-team methodology used here provides a repeatable framework for validating that remediation.</p>
+</section>
+
+<section>
+  <h2>9. Appendices</h2>
+  <h3>Appendix A: MITRE ATT&CK Mapping</h3>
+  <table>
+    <tr><th>Technique</th><th>ID</th><th>Context</th></tr>
+    <tr><td>User Execution</td><td>T1204.002</td><td>User-assisted execution of implant binary</td></tr>
+    <tr><td>Masquerading</td><td>T1036.005</td><td>Binary masquerades as legitimate system update</td></tr>
+    <tr><td>Match Legitimate Name or Location</td><td>T1036.005</td><td>Plist uses com.apple.system.update label</td></tr>
+    <tr><td>Encrypted Channel</td><td>T1573.002</td><td>AES-256-GCM C2 framing</td></tr>
+    <tr><td>File Deletion</td><td>T1070.004</td><td>Self-deletion via os.Remove</td></tr>
+    <tr><td>Impair Defenses</td><td>T1562.001</td><td>ptrace(PT_DENY_ATTACH) blocks debuggers</td></tr>
+    <tr><td>Obfuscated Files or Information</td><td>T1027</td><td>Runtime config encryption, memory encryption</td></tr>
+    <tr><td>Application Layer Protocol</td><td>T1071.001</td><td>Custom TCP C2 over port 8443</td></tr>
+    <tr><td>Boot or Logon Autostart Execution</td><td>T1543.001</td><td>LaunchAgent persistence</td></tr>
+    <tr><td>Command and Scripting Interpreter</td><td>T1059</td><td>/bin/sh execution for C2 tasking</td></tr>
+  </table>
+
+  <h3>Appendix B: Evidence Chain</h3>
+  <table>
+    <tr><th>ID</th><th>Description</th><th>Location</th></tr>
+    <tr><td>E-001</td><td>Implant execution and C2 connection</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/01-c2-connected.png">assets/01-c2-connected.png</a></td></tr>
+    <tr><td>E-002</td><td>EDR process event telemetry</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/02-edr-process-events.png">assets/02-edr-process-events.png</a></td></tr>
+    <tr><td>E-003</td><td>Persistence artifacts (plist + binary)</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/03-persistence-artifacts.png">assets/03-persistence-artifacts.png</a></td></tr>
+    <tr><td>E-004</td><td>Network connection telemetry</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/04-network-connection.png">assets/04-network-connection.png</a></td></tr>
+    <tr><td>E-005</td><td>Disk deletion with running process</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/05-disk-deletion.png">assets/05-disk-deletion.png</a></td></tr>
+    <tr><td>E-006</td><td>Encrypted C2 traffic capture</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/06-encrypted-traffic.png">assets/06-encrypted-traffic.png</a></td></tr>
+    <tr><td>E-007</td><td>Empty EDR alerts page</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/07-zero-alerts.png">assets/07-zero-alerts.png</a></td></tr>
+    <tr><td>E-008</td><td>Persistence installation execution</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/08-persistence-execution.png">assets/08-persistence-execution.png</a></td></tr>
+    <tr><td>E-009</td><td>Process executable field in Kibana</td><td><a href="https://raw.githubusercontent.com/jolly-rodgers/macos-edr-evasion/main/assets/09-process-executable.png">assets/09-process-executable.png</a></td></tr>
+    <tr><td>E-010</td><td>Video demonstration</td><td><a href="https://github.com/jolly-rodgers/macos-edr-evasion/blob/main/macos-edr-evasion-video-480p.mov">macos-edr-evasion-video-480p.mov</a></td></tr>
+  </table>
+
+  <h3>Appendix C: Tools and Versions</h3>
+  <table>
+    <tr><th>Component</th><th>Version</th></tr>
+    <tr><td>Go</td><td>1.22+</td></tr>
+    <tr><td>Elastic Agent</td><td>9.3.3</td></tr>
+    <tr><td>macOS</td><td>Sonoma (Darwin/arm64)</td></tr>
+    <tr><td>Kali Linux</td><td>2024.x</td></tr>
+  </table>
+</section>
+
+<div class="footer">
+  <p>Report generated for educational and authorized security assessment purposes.</p>
+  <p>Repository: <a href="https://github.com/jolly-rodgers/macos-edr-evasion">github.com/jolly-rodgers/macos-edr-evasion</a></p>
+</div>
+
+</div>
+</body>
+</html>
